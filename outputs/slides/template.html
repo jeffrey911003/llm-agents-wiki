@@ -1,0 +1,457 @@
+<title>LLM Agents 是什麼？</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Noto+Sans+TC:wght@400;500;700;900&display=swap">
+<style>
+/* Layout: one 16:9 "lab notebook" slide at a time on wide screens, stacked cards on phones.
+   Thought / Action / Observation colors (from the ReAct loop) are reused as the deck's only accents. */
+:root {
+  --bg: #eef1f4;
+  --paper: #fbfcfd;
+  --ink: #17212b;
+  --muted: #5a6875;
+  --line: #d3dae1;
+  --thought: #2f5fb3;
+  --action: #b5651d;
+  --obs: #2e7d55;
+  --tint-thought: #e5ecf8;
+  --tint-action: #f6ebdf;
+  --tint-obs: #e2f1e8;
+  --font-body: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #11161c; --paper: #192129; --ink: #e6ebf0; --muted: #9aa8b5; --line: #2c3742;
+    --thought: #7fa5ea; --action: #e3a066; --obs: #6cc496;
+    --tint-thought: #1f2c40; --tint-action: #3a2a1b; --tint-obs: #1b3326;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #11161c; --paper: #192129; --ink: #e6ebf0; --muted: #9aa8b5; --line: #2c3742;
+  --thought: #7fa5ea; --action: #e3a066; --obs: #6cc496;
+  --tint-thought: #1f2c40; --tint-action: #3a2a1b; --tint-obs: #1b3326;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--ink); font-family: var(--font-body);
+  margin: 0; line-height: 1.55;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 16px;
+}
+.deck { max-width: 1240px; margin: 0 auto; display: grid; gap: 12px; }
+.bar { display: flex; align-items: center; gap: 12px; font-family: var(--font-mono); font-size: 13px; color: var(--muted); }
+.bar .grow { flex: 1; height: 3px; background: var(--line); border-radius: 2px; overflow: hidden; }
+.bar .grow i { display: block; height: 100%; background: var(--thought); width: 0; transition: width .25s; }
+.bar button {
+  font: inherit; color: var(--ink); background: var(--paper); border: 1px solid var(--line);
+  border-radius: 6px; padding: 6px 12px; cursor: pointer;
+}
+.bar button:hover { border-color: var(--thought); }
+.bar button:focus-visible, .dots button:focus-visible { outline: 2px solid var(--thought); outline-offset: 2px; }
+.dots { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
+.dots button { width: 10px; height: 10px; border-radius: 50%; border: 0; padding: 0; background: var(--line); cursor: pointer; }
+.dots button[aria-current="true"] { background: var(--thought); }
+
+/* ---- slide frame ---- */
+section.slide {
+  container-type: inline-size;
+  background: var(--paper); border: 1px solid var(--line); border-radius: 10px;
+  aspect-ratio: 16 / 9; width: 100%; overflow: hidden;
+  display: grid; grid-template-rows: auto 1fr auto;
+  padding: 4.2cqw 5cqw 2.4cqw;
+  gap: 2cqw;
+}
+.js section.slide:not(.on) { display: none; }
+.slide h2 { margin: 0; font-size: 3.4cqw; font-weight: 900; line-height: 1.2; text-wrap: balance; letter-spacing: .01em; }
+.slide .kicker { font-family: var(--font-mono); font-size: 1.25cqw; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); margin-bottom: .6cqw; }
+.body { min-height: 0; font-size: 2.15cqw; display: grid; gap: 1.6cqw; align-content: start; }
+.body p { margin: 0; }
+.body ul { margin: 0; padding-left: 1.3em; display: grid; gap: .7cqw; }
+.cols { display: grid; grid-template-columns: 1fr 1fr; gap: 3cqw; min-height: 0; }
+.cols > * { min-width: 0; }
+.cols.w60 { grid-template-columns: 1.25fr 1fr; }
+.box { border: 1px solid var(--line); border-radius: 8px; padding: 1.6cqw 1.8cqw; display: grid; gap: .8cqw; align-content: start; }
+.box h3 { margin: 0; font-size: 2.3cqw; font-weight: 700; }
+.box.t { background: var(--tint-thought); border-color: transparent; }
+.box.a { background: var(--tint-action); border-color: transparent; }
+.box.o { background: var(--tint-obs); border-color: transparent; }
+.note { font-size: 1.7cqw; color: var(--muted); }
+.tag { font-family: var(--font-mono); font-weight: 600; font-size: .85em; }
+.tag.t { color: var(--thought); } .tag.a { color: var(--action); } .tag.o { color: var(--obs); }
+figure { margin: 0; display: grid; gap: .6cqw; min-height: 0; align-content: start; }
+figure img { width: 100%; height: auto; max-height: 31cqw; object-fit: contain; border-radius: 6px; background: #fff; border: 1px solid var(--line); }
+figcaption { font-family: var(--font-mono); font-size: 1.15cqw; color: var(--muted); }
+footer.src {
+  font-family: var(--font-mono); font-size: 1.1cqw; color: var(--muted);
+  border-top: 1px dashed var(--line); padding-top: .9cqw; display: flex; justify-content: space-between; gap: 2cqw;
+}
+footer.src b { color: var(--ink); font-weight: 600; }
+
+/* cover */
+.cover { align-content: center; gap: 2.4cqw; }
+.cover h1 { margin: 0; font-size: 7cqw; font-weight: 900; line-height: 1.1; letter-spacing: .01em; }
+.cover .sub { font-size: 2.6cqw; color: var(--muted); }
+.loop { display: flex; flex-wrap: wrap; align-items: center; gap: 1.2cqw; font-family: var(--font-mono); font-size: 2cqw; font-weight: 600; }
+.loop span { padding: .5cqw 1.4cqw; border-radius: 99px; }
+.loop .t { background: var(--tint-thought); color: var(--thought); }
+.loop .a { background: var(--tint-action); color: var(--action); }
+.loop .o { background: var(--tint-obs); color: var(--obs); }
+.loop em { font-style: normal; color: var(--muted); }
+
+/* module chips */
+.mods { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1.2cqw; }
+.mods div { border-top: .45cqw solid var(--thought); padding-top: .8cqw; font-size: 1.85cqw; }
+.mods b { display: block; font-size: 2.3cqw; }
+
+/* importance scale */
+.scale { position: relative; height: 5.2cqw; margin-top: 1cqw; }
+.scale .track { position: absolute; left: 0; right: 0; top: 2.2cqw; height: .5cqw; background: linear-gradient(90deg, var(--tint-obs), var(--tint-action)); border-radius: 1cqw; }
+.scale .tick { position: absolute; top: 3.1cqw; font-family: var(--font-mono); font-size: 1.2cqw; color: var(--muted); transform: translateX(-50%); }
+.scale .pin { position: absolute; top: 0; transform: translateX(-50%); font-size: 1.6cqw; white-space: nowrap; font-weight: 700; }
+.scale .pin::after { content: ""; position: absolute; left: 50%; top: 1.9cqw; width: 1.2cqw; height: 1.2cqw; margin-left: -.6cqw; border-radius: 50%; background: var(--action); }
+.formula { font-family: var(--font-mono); font-size: 2cqw; background: var(--tint-thought); padding: 1cqw 1.4cqw; border-radius: 6px; }
+
+/* ladder */
+.ladder { display: grid; gap: .6cqw; }
+.ladder div { padding: .7cqw 1.2cqw; background: var(--tint-thought); border-radius: 6px; font-size: 1.85cqw; }
+.ladder div:nth-child(2) { margin-left: 3cqw; } .ladder div:nth-child(3) { margin-left: 6cqw; }
+
+/* bars (drawn to scale: width = value %) */
+.bars { display: grid; gap: 1cqw; }
+.bars h3 { margin: 0; font-size: 2.1cqw; }
+.brow { display: grid; grid-template-columns: 9cqw 1fr 6cqw; align-items: center; gap: 1cqw; font-size: 1.8cqw; }
+.brow .trk { background: var(--bg); height: 2cqw; border-radius: 4px; overflow: hidden; }
+.brow .fill { height: 100%; border-radius: 4px; }
+.brow .v { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-weight: 600; text-align: right; }
+.fill.t { background: var(--thought); } .fill.a { background: var(--action); } .fill.o { background: var(--obs); } .fill.m { background: var(--muted); }
+
+/* stats */
+.stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.4cqw; }
+.stat { display: grid; gap: .3cqw; }
+.stat b { font-family: var(--font-mono); font-size: 4cqw; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.stat span { font-size: 1.65cqw; color: var(--muted); }
+.warn { border-left: .5cqw solid var(--action); padding: .8cqw 1.4cqw; background: var(--tint-action); border-radius: 0 6px 6px 0; font-size: 1.85cqw; }
+.refs { font-size: 1.45cqw; color: var(--muted); display: grid; gap: .3cqw; margin: 0; padding-left: 1.2em; }
+
+/* phone / narrow: stack every slide, free height */
+@media (max-width: 760px) {
+  .bar, .dots { display: none; }
+  .js section.slide:not(.on) { display: grid; }
+  section.slide { aspect-ratio: auto; padding: 20px 18px 14px; gap: 14px; }
+  .slide h2 { font-size: 22px; }
+  .slide .kicker, figcaption, footer.src, .note, .refs { font-size: 12px; }
+  .body, .mods div, .ladder div, .brow, .warn, .stat span, .formula { font-size: 15px; }
+  .box h3, .bars h3, .mods b { font-size: 16px; }
+  .cover h1 { font-size: 34px; } .cover .sub { font-size: 17px; } .loop { font-size: 14px; }
+  .cols, .cols.w60, .mods, .stats { grid-template-columns: 1fr; gap: 14px; }
+  figure img { max-height: none; }
+  .brow { grid-template-columns: 80px 1fr 52px; }
+  .brow .trk { height: 12px; }
+  .stat b { font-size: 26px; }
+  .scale { height: 56px; } .scale .track { top: 24px; height: 5px; } .scale .tick { top: 34px; font-size: 11px; }
+  .scale .pin { font-size: 12px; } .scale .pin::after { top: 20px; width: 12px; height: 12px; margin-left: -6px; }
+  .ladder div:nth-child(2) { margin-left: 16px; } .ladder div:nth-child(3) { margin-left: 32px; }
+  footer.src { flex-direction: column; gap: 4px; }
+  .box, .ladder div { padding: 10px 12px; }
+}
+@media (prefers-reduced-motion: reduce) { .bar .grow i { transition: none; } }
+</style>
+
+<div class="deck">
+<div class="bar" aria-label="簡報導覽">
+  <button type="button" id="prev" aria-label="上一張">← 上一張</button>
+  <span id="count">1 / 15</span>
+  <span class="grow" aria-hidden="true"><i id="prog"></i></span>
+  <button type="button" id="next" aria-label="下一張">下一張 →</button>
+</div>
+
+<!-- S1 -->
+<section class="slide" id="s1" data-sources="overview,index">
+  <div></div>
+  <div class="body cover">
+    <div class="kicker">教學簡報 · 給第一次接觸的人</div>
+    <h1>LLM Agents 是什麼？</h1>
+    <div class="sub">從「會聊天」到「會做事」的 AI</div>
+    <div class="loop" aria-label="Agent 的基本循環"><span class="t">想一想</span><em>→</em><span class="a">做一下</span><em>→</em><span class="o">看結果</span><em>→ 再想</em></div>
+    <p class="note">本簡報內容全部來自自建的 LLM Wiki（5 篇論文）。每張投影片底部標出它用到的 Wiki 頁面。</p>
+  </div>
+  <footer class="src"><span>Wiki 來源：<b>overview</b> · <b>index</b></span><span>1 / 15</span></footer>
+</section>
+
+<!-- S2 -->
+<section class="slide" id="s2" data-sources="llm-based-agent">
+  <div><div class="kicker">基本概念</div><h2>一般 LLM 和 LLM Agent 差在哪？</h2></div>
+  <div class="body">
+    <div class="cols">
+      <div class="box"><h3>一般 LLM</h3><p>你問一句，它答一句，對話就結束。</p><p class="note">像一位很博學、但只會坐著回答問題的顧問。</p></div>
+      <div class="box t"><h3>LLM Agent</h3><ul><li>扮演一個角色</li><li>感知環境</li><li>採取行動</li><li>隨時間學習、改變</li></ul></div>
+    </div>
+    <p><b>定義：</b>Agent 是身處環境中、會感知環境並對它採取行動、追求自己目標的系統（Franklin &amp; Graesser 1997）。<b>LLM Agent</b> 就是用 LLM 當「大腦」的這種系統。</p>
+  </div>
+  <footer class="src"><span>Wiki 來源：<b>llm-based-agent</b></span><span>2 / 15</span></footer>
+</section>
+
+<!-- S3 -->
+<section class="slide" id="s3" data-sources="tool-use,hallucination,schick2023-toolformer">
+  <div><div class="kicker">動機</div><h2>為什麼光有 LLM 還不夠？</h2></div>
+  <div class="body">
+    <div class="cols">
+      <div class="box"><h3>LLM 的基本功弱點</h3><ul><li>精確算數</li><li>查證事實</li><li>不知道最新資訊</li><li>不知道今天幾號</li></ul></div>
+      <div class="box a"><h3>幻覺（hallucination）</h3><p>很有自信地說出錯誤的內容。在 Agent 身上也會發生，而且會影響後續每一步行動。</p></div>
+    </div>
+    <p><b>解法方向：</b>替 LLM 加上 <span class="tag t">記憶</span>、<span class="tag t">規劃</span>、<span class="tag a">工具</span>、<span class="tag o">反思</span>。接下來逐一介紹。</p>
+  </div>
+  <footer class="src"><span>Wiki 來源：<b>tool-use</b> · <b>hallucination</b> · <b>schick2023-toolformer</b></span><span>3 / 15</span></footer>
+</section>
+
+<!-- S4 -->
+<section class="slide" id="s4" data-sources="wang2023-agent-survey,overview">
+  <div><div class="kicker">核心架構</div><h2>Agent 的四大模組</h2></div>
+  <div class="body">
+    <figure><img src="{{img:wang2023-fig2-agent-framework.jpg}}" alt="Survey 的統一架構圖：Profile、Memory、Planning、Action 四個模組"><figcaption>圖：Wang et al.（Survey），Fig. 2</figcaption></figure>
+    <div class="mods">
+      <div><b>① Profile</b>我是誰？</div>
+      <div><b>② Memory</b>記得什麼？</div>
+      <div><b>③ Planning</b>怎麼拆解任務？</div>
+      <div><b>④ Action</b>實際做什麼？</div>
+    </div>
+  </div>
+  <footer class="src"><span>Wiki 來源：<b>wang2023-agent-survey</b> · <b>overview</b></span><span>4 / 15</span></footer>
+</section>
+
+<!-- S5 -->
+<section class="slide" id="s5" data-sources="profiling">
+  <div><div class="kicker">模組 ①</div><h2>Profile：我是誰？</h2></div>
+  <div class="body">
+    <p>把角色寫進 prompt，例如基本資料、個性、和其他人的關係。</p>
+    <div class="cols" style="grid-template-columns:repeat(3,1fr)">
+      <div class="box"><h3>手寫</h3><p class="note">直接寫「你是一個外向的人」。</p></div>
+      <div class="box"><h3>讓 LLM 生成</h3><p class="note">給規則和幾個範例，讓 LLM 大量產生角色。</p></div>
+      <div class="box"><h3>從真實資料對齊</h3><p class="note">用真實的人口統計資料來設定角色。</p></div>
+    </div>
+    <div class="box t"><h3>例子：Generative Agents</h3><p>每個角色都有一段手寫描述，例如職業和家人；描述裡的每一句都會變成這個角色的初始記憶。</p></div>
+  </div>
+  <footer class="src"><span>Wiki 來源：<b>profiling</b></span><span>5 / 15</span></footer>
+</section>
+
+<!-- S6 -->
+<section class="slide" id="s6" data-sources="memory,park2023-generative-agents">
+  <div><div class="kicker">模組 ②</div><h2>Memory：記得什麼、想起什麼？</h2></div>
+  <div class="body">
+    <div class="cols">
+      <div class="box"><h3>短期記憶</h3><p>≈ LLM 的 context window，放得下的就是「現在記得的」。</p></div>
+      <div class="box"><h3>長期記憶</h3><p>≈ 外部資料庫，需要時再查出來。</p></div>
+    </div>
+    <div class="formula">想起哪段記憶 ＝ 多近（recency）＋ 多重要（importance）＋ 多相關（relevance）</div>
+    <div>
+      <p class="note">重要性由 LLM 打 1–10 分（Generative Agents 的例子）：</p>
+      <div class="scale" aria-label="重要性量尺：打掃房間 2 分，約暗戀對象 8 分">
+        <div class="track"></div>
+        <div class="tick" style="left:0%">1</div><div class="tick" style="left:100%">10</div>
+        <div class="pin" style="left:11.1%">打掃房間 2</div>
+        <div class="pin" style="left:77.8%">約暗戀對象 8</div>
+      </div>
+    </div>
+  </div>
+  <footer class="src"><span>Wiki 來源：<b>memory</b> · <b>park2023-generative-agents</b></span><span>6 / 15</span></footer>
+</section>
+
+<!-- S7 -->
+<section class="slide" id="s7" data-sources="planning,chain-of-thought">
+  <div><div class="kicker">模組 ③</div><h2>Planning：怎麼拆解任務？</h2></div>
+  <div class="body">
+    <div class="cols">
+      <div class="box"><h3>不看回饋</h3><ul><li><b>Chain-of-Thought</b>：一步一步想</li><li><b>Tree of Thoughts</b>：同時走多條路，再挑最好的</li></ul></div>
+      <div class="box o"><h3>看回饋</h3><p>做完一步，根據回饋調整計畫。回饋可以來自：</p><ul><li>環境</li><li>人</li><li>模型自己</li></ul></div>
+    </div>
+    <div class="cols">
+      <div><p class="note">階層規劃（Generative Agents）</p><div class="ladder"><div>一天的大綱</div><div>→ 每小時</div><div>→ 每 5–15 分鐘的行動</div></div></div>
+      <div class="warn">反例：沒有規劃的 Agent，會在 12 點、12:30、1 點各吃一次午餐。</div>
+    </div>
+  </div>
+  <footer class="src"><span>Wiki 來源：<b>planning</b> · <b>chain-of-thought</b></span><span>7 / 15</span></footer>
+</section>
+
+<!-- S8 -->
+<section class="slide" id="s8" data-sources="action,tool-use">
+  <div><div class="kicker">模組 ④</div><h2>Action：真的去做</h2></div>
+  <div class="body">
+    <div class="box"><h3>行動目標：為了什麼而做？</h3><p>完成任務 · 和其他 Agent 或人溝通 · 探索陌生環境</p></div>
+    <div class="box a"><h3>行動空間：能用什麼？</h3><p><b>外部工具</b>：API、資料庫、其他模型　或　<b>LLM 自己的知識</b></p></div>
+    <div class="box o"><h3>行動影響：做完會怎樣？</h3><p>改變環境 · 改變自己（例如更新記憶）· 觸發下一個行動</p></div>
+  </div>
+  <footer class="src"><span>Wiki 來源：<b>action</b> · <b>tool-use</b></span><span>8 / 15</span></footer>
+</section>
+
+<!-- S9 -->
+<section class="slide" id="s9" data-sources="react,yao2023-react">
+  <div><div class="kicker">經典做法 1 · ReAct</div><h2>ReAct：想一想 → 做一下 → 看結果</h2></div>
+  <div class="body">
+    <div class="loop"><span class="t">Thought 思考</span><em>→</em><span class="a">Action 行動</span><em>→</em><span class="o">Observation 觀察</span><em>↺ 不斷循環</em></div>
+    <figure><img src="{{img:yao2023-fig1-hotpotqa-only.jpg}}" alt="同一題 HotpotQA：Standard、CoT、Act-only 都答錯，ReAct 查 Wikipedia 後答對"><figcaption>圖：Yao et al. 2023, Fig. 1。CoT 只靠腦中知識瞎猜答錯；ReAct 查 Wikipedia 後答對。</figcaption></figure>
+    <p class="note">只需要 1–6 個示範例子，不用重新訓練模型。</p>
+  </div>
+  <footer class="src"><span>Wiki 來源：<b>react</b> · <b>yao2023-react</b></span><span>9 / 15</span></footer>
+</section>
+
+<!-- S10 -->
+<section class="slide" id="s10" data-sources="yao2023-react,react,alfworld">
+  <div><div class="kicker">經典做法 1 · 成績</div><h2>ReAct 的成績單：少了幻覺，多了打轉</h2></div>
+  <div class="body">
+    <div class="cols">
+      <div class="bars">
+        <h3>HotpotQA 失敗原因（佔失敗案例 %）</h3>
+        <p class="note">幻覺</p>
+        <div class="brow"><span>CoT</span><span class="trk"><span class="fill a" style="width:56%;display:block"></span></span><span class="v">56%</span></div>
+        <div class="brow"><span>ReAct</span><span class="trk"><span class="fill t" style="width:0%;display:block"></span></span><span class="v">0%</span></div>
+        <p class="note">推理錯誤（含原地打轉）</p>
+        <div class="brow"><span>CoT</span><span class="trk"><span class="fill a" style="width:16%;display:block"></span></span><span class="v">16%</span></div>
+        <div class="brow"><span>ReAct</span><span class="trk"><span class="fill t" style="width:47%;display:block"></span></span><span class="v">47%</span></div>
+      </div>
+      <div class="bars">
+        <h3>ALFWorld 家務遊戲成功率</h3>
+        <div class="brow"><span>ReAct</span><span class="trk"><span class="fill t" style="width:71%;display:block"></span></span><span class="v">71%</span></div>
+        <div class="brow"><span>只行動</span><span class="trk"><span class="fill a" style="width:45%;display:block"></span></span><span class="v">45%</span></div>
+        <div class="brow"><span>BUTLER</span><span class="trk"><span class="fill m" style="width:37%;display:block"></span></span><span class="v">37%</span></div>
+        <p class="note">BUTLER 是模仿學習方法。ReAct 只靠幾個示範例子就贏過它。</p>
+      </div>
+    </div>
+  </div>
+  <footer class="src"><span>Wiki 來源：<b>yao2023-react</b> · <b>react</b> · <b>alfworld</b></span><span>10 / 15</span></footer>
+</section>
+
+<!-- S11 -->
+<section class="slide" id="s11" data-sources="schick2023-toolformer,tool-use,react-vs-toolformer">
+  <div><div class="kicker">經典做法 2 · Toolformer</div><h2>Toolformer：自己學會用工具</h2></div>
+  <div class="body">
+    <div class="cols w60">
+      <div style="display:grid;gap:1.4cqw;align-content:start">
+        <div class="loop"><span class="t">插入 API 呼叫</span><em>→</em><span class="a">執行</span><em>→</em><span class="o">只留真的有幫助的</span></div>
+        <p>工具共 5 種：問答、Wikipedia 搜尋、計算機、行事曆、翻譯。</p>
+        <div class="stats" style="grid-template-columns:1fr 1fr">
+          <div class="stat"><b>40.4</b><span>Toolformer（6.7B）在數學 ASDiv</span></div>
+          <div class="stat"><b>14.0</b><span>GPT-3（175B）在數學 ASDiv</span></div>
+        </div>
+        <div class="warn">限制：每題最多呼叫 1 次，也不能把多個工具串在一起用。</div>
+      </div>
+      <figure><img src="{{img:schick2023-fig1-tool-calls.jpg}}" alt="Toolformer 自己在句子中插入問答、計算機、翻譯、搜尋的 API 呼叫"><figcaption>圖：Schick et al. 2023, Fig. 1</figcaption></figure>
+    </div>
+  </div>
+  <footer class="src"><span>Wiki 來源：<b>schick2023-toolformer</b> · <b>tool-use</b> · <b>react-vs-toolformer</b></span><span>11 / 15</span></footer>
+</section>
+
+<!-- S12 -->
+<section class="slide" id="s12" data-sources="shinn2023-reflexion,self-reflection">
+  <div><div class="kicker">經典做法 3 · Reflexion</div><h2>Reflexion：從失敗中學習</h2></div>
+  <div class="body">
+    <div class="cols w60">
+      <div style="display:grid;gap:1.4cqw;align-content:start">
+        <div class="loop"><span class="a">失敗</span><em>→</em><span class="t">用文字寫下反省</span><em>→</em><span class="o">存進記憶，再試一次</span></div>
+        <p class="note">不用重新訓練模型，學到的東西存在記憶裡。</p>
+        <div class="stats" style="grid-template-columns:1fr 1fr">
+          <div class="stat"><b>130/134</b><span>ALFWorld 解出的題數</span></div>
+          <div class="stat"><b>91.0%</b><span>HumanEval 寫程式（GPT-4 為 80.1%）</span></div>
+        </div>
+        <div class="warn">但要有可靠的檢查：拿掉「自己寫測試」只留反省，準確率反而從 60% 掉到 52%。</div>
+      </div>
+      <figure><img src="{{img:shinn2023-fig2-reflexion-loop.jpg}}" alt="Reflexion 架構：Actor 行動、Evaluator 評分、Self-reflection 寫下反省並存入長期記憶"><figcaption>圖：Shinn et al. 2023, Fig. 2</figcaption></figure>
+    </div>
+  </div>
+  <footer class="src"><span>Wiki 來源：<b>shinn2023-reflexion</b> · <b>self-reflection</b></span><span>12 / 15</span></footer>
+</section>
+
+<!-- S13 -->
+<section class="slide" id="s13" data-sources="park2023-generative-agents,smallville">
+  <div><div class="kicker">經典做法 4 · Generative Agents</div><h2>Generative Agents：會過生活的 AI 小鎮</h2></div>
+  <div class="body">
+    <div class="cols w60">
+      <figure><img src="{{img:park2023-fig9-party-diffusion.jpg}}" alt="Isabella 的情人節派對消息在小鎮居民之間傳開的路徑圖"><figcaption>圖：Park et al. 2023, Fig. 9。派對消息的傳播路徑</figcaption></figure>
+      <div style="display:grid;gap:1.4cqw;align-content:start">
+        <p>25 個 Agent 住在 Smallville，靠<b>記憶流 ＋ 反思 ＋ 規劃</b>過日子。</p>
+        <p>只告訴其中一人「想辦情人節派對」，兩天後：</p>
+        <div class="stats" style="grid-template-columns:1fr 1fr">
+          <div class="stat"><b>1 → 13</b><span>知道派對的人數</span></div>
+          <div class="stat"><b>5 / 12</b><span>受邀者準時出席</span></div>
+        </div>
+        <p class="note">「像真人」分數：完整架構 29.89 → 拿掉反思 26.88 → 再拿掉規劃 25.64</p>
+      </div>
+    </div>
+  </div>
+  <footer class="src"><span>Wiki 來源：<b>park2023-generative-agents</b> · <b>smallville</b></span><span>13 / 15</span></footer>
+</section>
+
+<!-- S14 -->
+<section class="slide" id="s14" data-sources="agent-evaluation,hallucination,wang2023-agent-survey">
+  <div><div class="kicker">評估與挑戰</div><h2>怎麼知道 Agent 好不好？還有哪些難題？</h2></div>
+  <div class="body">
+    <div class="cols">
+      <div class="box"><h3>主觀評估</h3><ul><li>請人評分</li><li>直接「訪談」Agent</li><li>圖靈測試：分不分得出是人還是 AI</li></ul></div>
+      <div class="box"><h3>客觀評估</h3><ul><li>任務成功率</li><li>常用 benchmark：HotpotQA、ALFWorld、WebShop、HumanEval</li></ul></div>
+    </div>
+    <div class="box a"><h3>目前的挑戰</h3><p>幻覺 · 角色扮演 · 對齊人類價值 · prompt 穩健性 · 效率</p></div>
+  </div>
+  <footer class="src"><span>Wiki 來源：<b>agent-evaluation</b> · <b>hallucination</b> · <b>wang2023-agent-survey</b></span><span>14 / 15</span></footer>
+</section>
+
+<!-- S15 -->
+<section class="slide" id="s15" data-sources="overview,hallucination,react-vs-toolformer,reflection-two-ways,wang2023-agent-survey,yao2023-react,schick2023-toolformer,shinn2023-reflexion,park2023-generative-agents">
+  <div><div class="kicker">重點回顧</div><h2>一張投影片帶走</h2></div>
+  <div class="body">
+    <div class="formula">Agent ＝ LLM ＋ 角色 ＋ 記憶 ＋ 規劃 ＋ 行動</div>
+    <div class="mods">
+      <div><b>ReAct</b>邊想邊做</div>
+      <div><b>Toolformer</b>自學用工具</div>
+      <div><b>Reflexion</b>從錯誤中學</div>
+      <div><b>Generative Agents</b>模擬真人</div>
+    </div>
+    <p>（Wiki 綜合觀點）共同關鍵：把 LLM 接上真實資訊與可靠的檢查，才能減少幻覺。</p>
+    <ol class="refs">
+      <li>Wang et al. A Survey on Large Language Model based Autonomous Agents.</li>
+      <li>Yao et al. ReAct: Synergizing Reasoning and Acting in Language Models. ICLR 2023.</li>
+      <li>Schick et al. Toolformer: Language Models Can Teach Themselves to Use Tools.</li>
+      <li>Shinn et al. Reflexion: Language Agents with Verbal Reinforcement Learning.</li>
+      <li>Park et al. Generative Agents: Interactive Simulacra of Human Behavior. UIST 2023.</li>
+    </ol>
+  </div>
+  <footer class="src"><span>Wiki 來源：<b>overview</b> · <b>hallucination</b> · <b>react-vs-toolformer</b> · <b>reflection-two-ways</b> · 5 個論文頁</span><span>15 / 15</span></footer>
+</section>
+
+<nav class="dots" id="dots" aria-label="跳到投影片"></nav>
+</div>
+
+<script>
+(function () {
+  var slides = Array.prototype.slice.call(document.querySelectorAll("section.slide"));
+  var n = slides.length, cur = 0;
+  document.documentElement.classList.add("js");
+  var dots = document.getElementById("dots");
+  slides.forEach(function (s, i) {
+    var b = document.createElement("button");
+    b.type = "button"; b.setAttribute("aria-label", "第 " + (i + 1) + " 張");
+    b.addEventListener("click", function () { go(i); });
+    dots.appendChild(b);
+  });
+  function go(i) {
+    cur = Math.max(0, Math.min(n - 1, i));
+    slides.forEach(function (s, k) { s.classList.toggle("on", k === cur); });
+    Array.prototype.forEach.call(dots.children, function (d, k) { d.setAttribute("aria-current", k === cur ? "true" : "false"); });
+    document.getElementById("count").textContent = (cur + 1) + " / " + n;
+    document.getElementById("prog").style.width = ((cur + 1) / n * 100) + "%";
+    if (location.hash !== "#s" + (cur + 1)) history.replaceState(null, "", "#s" + (cur + 1));
+  }
+  document.getElementById("prev").addEventListener("click", function () { go(cur - 1); });
+  document.getElementById("next").addEventListener("click", function () { go(cur + 1); });
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "ArrowRight" || e.key === "PageDown" || e.key === " ") { e.preventDefault(); go(cur + 1); }
+    if (e.key === "ArrowLeft" || e.key === "PageUp") { e.preventDefault(); go(cur - 1); }
+  });
+  function fromHash() { var m = /^#s(\d+)$/.exec(location.hash); go(m ? parseInt(m[1], 10) - 1 : 0); }
+  window.addEventListener("hashchange", fromHash);
+  fromHash();
+})();
+</script>
